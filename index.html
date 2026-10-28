@@ -4,14 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Comparateur de total return</title>
+<script>try{var t=localStorage.getItem("tr_theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--tx:#14181f;--mut:#66707f;--bd:#e2e6ec;--ac:#2563eb;--up:#0f9d58;--dn:#d93025;--act:#e5e7eb}
-@media (prefers-color-scheme:dark){:root{--bg:#0e1116;--card:#171b22;--tx:#e8ebf0;--mut:#8b94a3;--bd:#262c36;--ac:#6ea0ff;--up:#34c77b;--dn:#ff6b60;--act:#2a303b}}
+:root{color-scheme:light;--bg:#f6f7f9;--card:#fff;--tx:#14181f;--mut:#66707f;--bd:#e2e6ec;--ac:#2563eb;--up:#0f9d58;--dn:#d93025;--act:#e5e7eb}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0e1116;--card:#171b22;--tx:#e8ebf0;--mut:#8b94a3;--bd:#262c36;--ac:#6ea0ff;--up:#34c77b;--dn:#ff6b60;--act:#2a303b}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0e1116;--card:#171b22;--tx:#e8ebf0;--mut:#8b94a3;--bd:#262c36;--ac:#6ea0ff;--up:#34c77b;--dn:#ff6b60;--act:#2a303b}
 *{box-sizing:border-box}
 html,body{max-width:100%;overflow-x:hidden}
 body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 48px}
-h1{font-size:24px;margin:0 0 14px;padding-bottom:10px;border-bottom:3px solid var(--ac)}
+h1{font-size:24px;margin:0 0 14px;padding-bottom:10px;border-bottom:3px solid var(--ac);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.th{font-size:13px;padding:6px 12px;font-weight:500}
 .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 input[type=text]{flex:1;min-width:200px;padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font:inherit}
 select,button{font:inherit;cursor:pointer;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:9px 14px}
@@ -44,7 +47,7 @@ td.v{font-variant-numeric:tabular-nums;font-weight:600}
 </head>
 <body>
 <div class="wrap">
-  <h1>Comparateur de total return <small style="font-size:12px;color:var(--mut);font-weight:400">v2 · Yahoo en direct</small></h1>
+  <h1><span>Comparateur de total return <small style="font-size:12px;color:var(--mut);font-weight:400">v3 · Yahoo en direct</small></span><button id="theme" class="th" type="button"></button></h1>
   <div class="bar">
     <input id="tin" type="text" list="dl" placeholder="Tape un ticker ou un nom (ex. VOO, HEQL, CW8.PA) puis Entrée" autocomplete="off" autocapitalize="characters">
     <datalist id="dl"></datalist>
@@ -164,6 +167,10 @@ function download(){var ss=tickers.map(function(t){return {t:t,s:series(t)}}).fi
  var csv="date;"+ss.map(function(o){return o.t}).join(";")+"\n"+ds.map(function(d){return new Date(d).toISOString().slice(0,10)+";"+m.map(function(r){return r[d]!=null?r[d].toFixed(3):""}).join(";")}).join("\n");
  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="total-return-"+rng+".csv";a.click()}
 
+function eff(){var t=document.documentElement.getAttribute("data-theme");return t||(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light")}
+function themeIcon(){$("theme").textContent=eff()==="dark"?"☀️ Mode clair":"🌙 Mode sombre"}
+$("theme").onclick=function(){var n=eff()==="dark"?"light":"dark";document.documentElement.setAttribute("data-theme",n);try{localStorage.setItem("tr_theme",n)}catch(e){}themeIcon();render()};
+themeIcon();
 var rt;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(render,150)});
 drawTabs();
 var st;$("tin").addEventListener("input",function(){clearTimeout(st);var v=$("tin").value.trim();if(!API||v.length<2)return;
