@@ -1,0 +1,10 @@
+# Un ticker Yahoo Finance par ligne. Modifie ce fichier sur GitHub : les données se mettent à jour toutes seules.
+# Hors US : suffixe Yahoo (.PA Paris, .AS Amsterdam, .DE Xetra, .L Londres, .TO Toronto)
+VOO
+QQQ
+SMH
+VXUS
+IVW
+VGT
+CW8.PA
+IWDA.AS
