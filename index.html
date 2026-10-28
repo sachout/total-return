@@ -42,12 +42,14 @@ th:first-child,td:first-child{text-align:left}
 th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);font-weight:600}
 td.v{font-variant-numeric:tabular-nums;font-weight:600}
 .nm{font-weight:700}.nm small{display:block;color:var(--mut);font-weight:400;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.sim{gap:16px}.sim label{display:flex;gap:6px;align-items:center;font-size:14px}
+.sim input[type=number]{width:120px;padding:7px 9px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font:inherit}
 .note{font-size:12.5px;color:var(--mut);margin:0 0 6px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1><span>Comparateur de total return <small style="font-size:12px;color:var(--mut);font-weight:400">v3 · Yahoo en direct</small></span><button id="theme" class="th" type="button"></button></h1>
+  <h1><span>Comparateur de total return <small style="font-size:12px;color:var(--mut);font-weight:400">v4 · Yahoo en direct</small></span><button id="theme" class="th" type="button"></button></h1>
   <div class="bar">
     <input id="tin" type="text" list="dl" placeholder="Tape un ticker ou un nom (ex. VOO, HEQL, CW8.PA) puis Entrée" autocomplete="off" autocapitalize="characters">
     <datalist id="dl"></datalist>
@@ -61,6 +63,11 @@ td.v{font-variant-numeric:tabular-nums;font-weight:600}
     <div id="chart"></div>
   </div>
   <div class="panel"><div class="scroll"><table id="tbl"></table></div></div>
+  <div class="panel"><div class="tabs sim"><b>Simulateur</b>
+    <label>Montant investi <input id="amt" type="number" min="1" step="100" inputmode="decimal"> $</label>
+    <label>Durée <select id="yrs"><option value="1">1 an</option><option value="2">2 ans</option><option value="3">3 ans</option><option value="5">5 ans</option><option value="10">10 ans</option><option value="15">15 ans</option><option value="20">20 ans</option><option value="MAX">Maximum</option></select></label></div>
+    <div class="scroll"><table id="simtbl"></table></div></div>
+  <p class="note" id="simnote"></p>
   <p class="note" id="meth"></p>
 </div>
 <script>
@@ -72,10 +79,11 @@ var avail={},data={},tickers=[],rng="1Y",mode="tr",updated="";
 var q=new URLSearchParams(location.search);
 if(q.get("r")&&RANGES.indexOf(q.get("r"))>=0)rng=q.get("r");
 if(q.get("m")==="px")mode="px";
+var amt=+q.get("a")>0?+q.get("a"):10000,yrs=["1","2","3","5","10","15","20","MAX"].indexOf(q.get("y"))>=0?q.get("y"):"5";
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function fmt(v){if(v==null||isNaN(v))return "—";return (v>0?"+":"")+v.toFixed(2).replace(".",",")+" %"}
 function col(t){return COLORS[tickers.indexOf(t)%COLORS.length]}
-function sync(){try{var u=new URL(location.href);u.searchParams.set("t",tickers.join(","));u.searchParams.set("r",rng);u.searchParams.set("m",mode);history.replaceState(null,"",u)}catch(e){}}
+function sync(){try{var u=new URL(location.href);u.searchParams.set("t",tickers.join(","));u.searchParams.set("r",rng);u.searchParams.set("m",mode);u.searchParams.set("a",amt);u.searchParams.set("y",yrs);history.replaceState(null,"",u)}catch(e){}}
 function editLink(){var h=location.hostname,m=h.match(/^(.+)\.github\.io$/),r=location.pathname.split("/")[1];return m&&r?"https://github.com/"+m[1]+"/"+r+"/edit/main/tickers.txt":null}
 
 function drawChips(){var c=$("chips");c.innerHTML="";tickers.forEach(function(t){
@@ -153,7 +161,7 @@ function render(){
  hv.addEventListener("pointerleave",function(){vl.setAttribute("visibility","hidden");tip.hidden=true});
  drawTable()}
 
-function drawTable(){
+function drawTable(){drawSim();
  var h="<tr><th>Titre</th>"+P.map(function(k){return "<th>"+k+"</th>"}).join("")+"</tr>";
  tickers.forEach(function(t){if(!data[t])return;
   h+="<tr><td class=nm style='border-left:4px solid "+col(t)+"'>"+esc(t)+"<small>"+esc((avail[t]&&avail[t].name)||"")+"</small></td>"+P.map(function(k){var s=series(t,k),v=s?s[s.length-1][1]:null;
@@ -171,6 +179,21 @@ function eff(){var t=document.documentElement.getAttribute("data-theme");return 
 function themeIcon(){$("theme").textContent=eff()==="dark"?"☀️ Mode clair":"🌙 Mode sombre"}
 $("theme").onclick=function(){var n=eff()==="dark"?"light":"dark";document.documentElement.setAttribute("data-theme",n);try{localStorage.setItem("tr_theme",n)}catch(e){}themeIcon();render()};
 themeIcon();
+function fmoney(v){return Math.round(v).toLocaleString("fr-FR")+" $"}
+function drawSim(){var rows=[],now=new Date(),st=yrs==="MAX"?0:Date.UTC(now.getFullYear()-(+yrs),now.getMonth(),now.getDate());
+ tickers.forEach(function(t){var d=data[t];if(!d)return;var src=mode==="tr"?d.adj:d.px,i=0;
+  while(i<src.length&&src[i][0]<st)i++;if(i>=src.length-1)return;
+  var a=src[i],b=src[src.length-1],yy=(b[0]-a[0])/YR,f=b[1]/a[1];
+  rows.push({t:t,name:(avail[t]&&avail[t].name)||"",val:amt*f,gain:amt*(f-1),pct:(f-1)*100,cagr:yy>=1?(Math.pow(f,1/yy)-1)*100:null,yy:yy,short:yrs!=="MAX"&&(a[0]-st)/864e5>20,since:a[0]})});
+ rows.sort(function(x,y){return y.val-x.val});
+ var h="<tr><th>Titre</th><th>Valeur finale</th><th>Gain</th><th>Rendement</th><th>Par an</th></tr>";
+ rows.forEach(function(r){h+="<tr><td class=nm style='border-left:4px solid "+col(r.t)+"'>"+esc(r.t)+"<small>"+esc(r.short?"depuis le "+dstr(r.since,true)+" ("+r.yy.toFixed(1).replace(".",",")+" ans)":r.name)+"</small></td>"+
+  "<td class=v>"+fmoney(r.val)+"</td><td class='v "+(r.gain>=0?"up":"dn")+"'>"+(r.gain>0?"+":"")+fmoney(r.gain)+"</td><td class='v "+(r.pct>=0?"up":"dn")+"'>"+fmt(r.pct)+"</td><td class='v "+(r.cagr!=null&&r.cagr<0?"dn":"up")+"'>"+(r.cagr!=null?fmt(r.cagr):"—")+"</td></tr>"});
+ $("simtbl").innerHTML=rows.length?h:"";
+ $("simnote").textContent=rows.length?"Simulation d’un investissement unique de "+fmoney(amt)+(yrs==="MAX"?" depuis le début de l’historique":" il y a "+yrs+(yrs==="1"?" an":" ans"))+", "+(mode==="tr"?"dividendes réinvestis":"sans les dividendes")+", sans frais ni impôts, dans la devise de chaque titre. Les performances passées ne garantissent pas les résultats futurs.":""}
+$("amt").value=amt;$("yrs").value=yrs;
+$("amt").oninput=function(){var v=+$("amt").value;if(v>0){amt=v;sync();drawSim()}};
+$("yrs").onchange=function(){yrs=$("yrs").value;sync();drawSim()};
 var rt;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(render,150)});
 drawTabs();
 var st;$("tin").addEventListener("input",function(){clearTimeout(st);var v=$("tin").value.trim();if(!API||v.length<2)return;
