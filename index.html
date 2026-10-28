@@ -44,9 +44,9 @@ td.v{font-variant-numeric:tabular-nums;font-weight:600}
 </head>
 <body>
 <div class="wrap">
-  <h1>Comparateur de total return</h1>
+  <h1>Comparateur de total return <small style="font-size:12px;color:var(--mut);font-weight:400">v2 · Yahoo en direct</small></h1>
   <div class="bar">
-    <input id="tin" type="text" list="dl" placeholder="Ajouter un ticker (ex. VOO, CW8.PA) puis Entrée" autocomplete="off" autocapitalize="characters">
+    <input id="tin" type="text" list="dl" placeholder="Tape un ticker ou un nom (ex. VOO, HEQL, CW8.PA) puis Entrée" autocomplete="off" autocapitalize="characters">
     <datalist id="dl"></datalist>
     <select id="mode"><option value="tr">Total Return (%)</option><option value="px">Prix (%)</option></select>
   </div>
@@ -85,16 +85,31 @@ function drawTabs(){var t=$("tabs");t.innerHTML="";RANGES.forEach(function(k){va
  var d=document.createElement("button");d.className="dl";d.textContent="Télécharger";d.onclick=download;t.appendChild(d)}
 $("mode").value=mode;$("mode").onchange=function(){mode=$("mode").value;sync();render()};
 
-async function getData(t){if(data[t])return true;var a=avail[t];if(!a)return false;
- try{var r=await fetch("data/"+encodeURIComponent(a.file));if(!r.ok)return false;var j=await r.json();
-  var ms=function(s){return Date.parse(s+"T00:00:00Z")};
-  data[t]={px:j.rows.map(function(x){return [ms(x[0]),x[1]]}),adj:j.rows.map(function(x){return [ms(x[0]),x[2]]})};return true}catch(e){return false}}
+var API="";try{API=q.get("api")||localStorage.getItem("tr_api")||""}catch(e){}
+try{if(q.get("api"))localStorage.setItem("tr_api",q.get("api"))}catch(e){}
+function base(){return API.replace(/\/+$/,"")}
+function parseYahoo(j){var r=j&&j.chart&&j.chart.result&&j.chart.result[0];if(!r||!r.timestamp)return null;
+ var c=r.indicators.quote[0].close,a=(r.indicators.adjclose&&r.indicators.adjclose[0]&&r.indicators.adjclose[0].adjclose)||c,px=[],adj=[];
+ r.timestamp.forEach(function(ts,i){if(c[i]==null)return;var d=Math.floor(ts*1000/864e5)*864e5;px.push([d,c[i]]);adj.push([d,a[i]!=null?a[i]:c[i]])});
+ return px.length>1?{px:px,adj:adj,name:r.meta.longName||r.meta.shortName||""}:null}
+async function getData(t){if(data[t])return true;var a=avail[t];
+ try{if(a&&a.file){var r=await fetch("data/"+encodeURIComponent(a.file));if(!r.ok)return false;var j=await r.json();
+   var ms=function(x){return Date.parse(x+"T00:00:00Z")};
+   data[t]={px:j.rows.map(function(x){return [ms(x[0]),x[1]]}),adj:j.rows.map(function(x){return [ms(x[0]),x[2]]})};return true}
+  if(!API)return false;
+  var r2=await fetch(base()+"/?s="+encodeURIComponent(t));if(!r2.ok)return false;
+  var d=parseYahoo(await r2.json());if(!d)return false;
+  data[t]={px:d.px,adj:d.adj};avail[t]={t:t,name:d.name};return true}catch(e){return false}}
+function showSetup(miss){var s=$("status");
+ s.innerHTML="<div class=msg>Pour charger n’importe quel ticker, colle ici l’adresse de ton Worker Cloudflare (voir le guide) :<div class=bar style='margin:8px 0 0'><input id=api type=text placeholder='https://yahoo-proxy.xxxx.workers.dev'><button id=apisave>Enregistrer</button></div></div>";
+ $("apisave").onclick=function(){var v=$("api").value.trim();if(!/^https:\/\//.test(v))return;API=v;try{localStorage.setItem("tr_api",v)}catch(e){}s.innerHTML="";add(miss)}}
 async function add(list){var miss=[];
  for(var i=0;i<list.length;i++){var t=list[i];if(tickers.indexOf(t)>=0||tickers.length>=12)continue;
-  if(!avail[t]){miss.push(t);continue}
-  if(await getData(t))tickers.push(t)}
+  if(await getData(t))tickers.push(t);else miss.push(t)}
  var s=$("status");
- if(miss.length){var l=editLink();s.innerHTML="<div class=msg>"+esc(miss.join(", "))+" n’est pas encore dans la base. "+(l?"<a href='"+l+"' target='_blank' rel='noopener'>Ajoute-le dans tickers.txt</a> (une ligne, puis Commit) : les données arrivent en environ une minute.":"Ajoute-le dans le fichier tickers.txt du dépôt GitHub.")+"</div>"}else s.innerHTML="";
+ if(miss.length&&!API)showSetup(miss);
+ else if(miss.length)s.innerHTML="<div class=msg>"+esc(miss.join(", "))+" : introuvable sur Yahoo Finance. Essaie le symbole exact (ex. HEQL.TO, CW8.PA) ou tape le nom pour voir les suggestions.</div>";
+ else s.innerHTML="";
  sync();drawChips();render()}
 $("tin").addEventListener("keydown",function(e){if(e.key==="Enter"){var v=$("tin").value.toUpperCase().split(/[\s,;]+/).filter(Boolean);$("tin").value="";add(v)}});
 
@@ -151,11 +166,16 @@ function download(){var ss=tickers.map(function(t){return {t:t,s:series(t)}}).fi
 
 var rt;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(render,150)});
 drawTabs();
-fetch("data/index.json").then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(j){
- updated=j.updated||"";j.tickers.forEach(function(x){avail[x.t]=x});
- $("dl").innerHTML=j.tickers.map(function(x){return "<option value='"+esc(x.t)+"'>"+esc(x.name||"")+"</option>"}).join("");
- var want=(q.get("t")||"").toUpperCase().split(",").filter(Boolean);if(!want.length)want=j.tickers.slice(0,3).map(function(x){return x.t});
- return add(want)}).catch(function(){$("status").innerHTML="<div class=msg>Aucune donnée pour l’instant. Lance le workflow « Mise à jour des données » dans l’onglet Actions du dépôt GitHub (voir LISEZMOI).</div>"});
+var st;$("tin").addEventListener("input",function(){clearTimeout(st);var v=$("tin").value.trim();if(!API||v.length<2)return;
+ st=setTimeout(async function(){try{var r=await fetch(base()+"/?q="+encodeURIComponent(v)),j=await r.json();
+  $("dl").innerHTML=(j.quotes||[]).filter(function(x){return x.symbol}).map(function(x){return "<option value='"+esc(x.symbol)+"'>"+esc((x.shortname||x.longname||"")+" · "+(x.exchDisp||""))+"</option>"}).join("")}catch(e){}},300)});
+fetch("data/index.json").then(function(r){return r.ok?r.json():{tickers:[]}}).catch(function(){return {tickers:[]}}).then(function(j){
+ updated=j.updated||"";(j.tickers||[]).forEach(function(x){avail[x.t]=x});
+ $("dl").innerHTML=(j.tickers||[]).map(function(x){return "<option value='"+esc(x.t)+"'>"+esc(x.name||"")+"</option>"}).join("");
+ var want=(q.get("t")||"").toUpperCase().split(",").filter(Boolean);
+ if(!want.length)want=(j.tickers||[]).slice(0,3).map(function(x){return x.t});
+ if(!want.length)want=["VOO","QQQ","SMH"];
+ return add(want)});
 })();
 </script>
 </body>
