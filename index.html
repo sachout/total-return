@@ -49,7 +49,7 @@ td.v{font-variant-numeric:tabular-nums;font-weight:600}
 </head>
 <body>
 <div class="wrap">
-  <h1><span>Comparateur de total return <small style="font-size:12px;color:var(--mut);font-weight:400">v4 · Yahoo en direct</small></span><button id="theme" class="th" type="button"></button></h1>
+  <h1><span>Comparateur de total return <small style="font-size:12px;color:var(--mut);font-weight:400">v5 · Yahoo en direct</small></span><button id="theme" class="th" type="button"></button></h1>
   <div class="bar">
     <input id="tin" type="text" list="dl" placeholder="Tape un ticker ou un nom (ex. VOO, HEQL, CW8.PA) puis Entrée" autocomplete="off" autocapitalize="characters">
     <datalist id="dl"></datalist>
@@ -65,7 +65,8 @@ td.v{font-variant-numeric:tabular-nums;font-weight:600}
   <div class="panel"><div class="scroll"><table id="tbl"></table></div></div>
   <div class="panel"><div class="tabs sim"><b>Simulateur</b>
     <label>Montant investi <input id="amt" type="number" min="1" step="100" inputmode="decimal"> $</label>
-    <label>Durée <select id="yrs"><option value="1">1 an</option><option value="2">2 ans</option><option value="3">3 ans</option><option value="5">5 ans</option><option value="10">10 ans</option><option value="15">15 ans</option><option value="20">20 ans</option><option value="MAX">Maximum</option></select></label></div>
+    <label>Durée <select id="yrs"><option value="1">1 an</option><option value="2">2 ans</option><option value="3">3 ans</option><option value="5">5 ans</option><option value="10">10 ans</option><option value="15">15 ans</option><option value="20">20 ans</option><option value="MAX">Maximum</option></select></label>
+    <label>Dividendes réinvestis <input id="rpall" type="number" min="0" max="100" step="5" value="100"> % <button id="rpbtn" type="button">Appliquer à tous</button></label></div>
     <div class="scroll"><table id="simtbl"></table></div></div>
   <p class="note" id="simnote"></p>
   <p class="note" id="meth"></p>
@@ -80,10 +81,11 @@ var q=new URLSearchParams(location.search);
 if(q.get("r")&&RANGES.indexOf(q.get("r"))>=0)rng=q.get("r");
 if(q.get("m")==="px")mode="px";
 var amt=+q.get("a")>0?+q.get("a"):10000,yrs=["1","2","3","5","10","15","20","MAX"].indexOf(q.get("y"))>=0?q.get("y"):"5";
+var rp={};(q.get("rp")||"").split(",").forEach(function(x){var a=x.split(":"),v=+a[1];if(a[0]&&a[1]!==undefined&&v>=0&&v<=100)rp[a[0].toUpperCase()]=v});
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function fmt(v){if(v==null||isNaN(v))return "—";return (v>0?"+":"")+v.toFixed(2).replace(".",",")+" %"}
 function col(t){return COLORS[tickers.indexOf(t)%COLORS.length]}
-function sync(){try{var u=new URL(location.href);u.searchParams.set("t",tickers.join(","));u.searchParams.set("r",rng);u.searchParams.set("m",mode);u.searchParams.set("a",amt);u.searchParams.set("y",yrs);history.replaceState(null,"",u)}catch(e){}}
+function sync(){try{var u=new URL(location.href);u.searchParams.set("t",tickers.join(","));u.searchParams.set("r",rng);u.searchParams.set("m",mode);u.searchParams.set("a",amt);u.searchParams.set("y",yrs);var rs=Object.keys(rp).filter(function(k){return rp[k]!==100&&tickers.indexOf(k)>=0}).map(function(k){return k+":"+rp[k]}).join(",");if(rs)u.searchParams.set("rp",rs);else u.searchParams.delete("rp");history.replaceState(null,"",u)}catch(e){}}
 function editLink(){var h=location.hostname,m=h.match(/^(.+)\.github\.io$/),r=location.pathname.split("/")[1];return m&&r?"https://github.com/"+m[1]+"/"+r+"/edit/main/tickers.txt":null}
 
 function drawChips(){var c=$("chips");c.innerHTML="";tickers.forEach(function(t){
@@ -180,20 +182,35 @@ function themeIcon(){$("theme").textContent=eff()==="dark"?"☀️ Mode clair":"
 $("theme").onclick=function(){var n=eff()==="dark"?"light":"dark";document.documentElement.setAttribute("data-theme",n);try{localStorage.setItem("tr_theme",n)}catch(e){}themeIcon();render()};
 themeIcon();
 function fmoney(v){return Math.round(v).toLocaleString("fr-FR")+" $"}
-function drawSim(){var rows=[],now=new Date(),st=yrs==="MAX"?0:Date.UTC(now.getFullYear()-(+yrs),now.getMonth(),now.getDate());
- tickers.forEach(function(t){var d=data[t];if(!d)return;var src=mode==="tr"?d.adj:d.px,i=0;
-  while(i<src.length&&src[i][0]<st)i++;if(i>=src.length-1)return;
-  var a=src[i],b=src[src.length-1],yy=(b[0]-a[0])/YR,f=b[1]/a[1];
-  rows.push({t:t,name:(avail[t]&&avail[t].name)||"",val:amt*f,gain:amt*(f-1),pct:(f-1)*100,cagr:yy>=1?(Math.pow(f,1/yy)-1)*100:null,yy:yy,short:yrs!=="MAX"&&(a[0]-st)/864e5>20,since:a[0]})});
+function simStart(){var n=new Date();return yrs==="MAX"?0:Date.UTC(n.getFullYear()-(+yrs),n.getMonth(),n.getDate())}
+function simCalc(t){var d=data[t];if(!d)return null;var px=d.px,adj=d.adj,st=simStart(),i=0;
+ while(i<px.length&&px[i][0]<st)i++;if(i>=px.length-1)return null;
+ var P0=px[i][1],Pe=px[px.length-1][1],yy=(px[px.length-1][0]-px[i][0])/YR,N=1,cash=0;
+ if(mode==="tr"){var p=(rp[t]!=null?rp[t]:100)/100,rPrev=adj[i][1]/px[i][1];
+  for(var k=i+1;k<px.length;k++){var r=adj[k][1]/px[k][1],y=1-rPrev/r;
+   if(y>0.0008&&y<0.6){cash+=(1-p)*N*y*px[k-1][1];N*=1+p*y/(1-y)}
+   rPrev=r}}
+ var f=(N*Pe+cash)/P0;
+ return {t:t,name:(avail[t]&&avail[t].name)||"",f:f,val:amt*f,gain:amt*(f-1),pct:(f-1)*100,cagr:yy>=1?(Math.pow(f,1/yy)-1)*100:null,cash:amt*cash/P0,yy:yy,since:px[i][0],short:yrs!=="MAX"&&(px[i][0]-st)/864e5>20}}
+function cellsOf(r){return [fmoney(r.val),fmoney(r.cash),(r.gain>0?"+":"")+fmoney(r.gain),fmt(r.pct),r.cagr!=null?fmt(r.cagr):"—"]}
+function clsOf(r){return ["v","v","v "+(r.gain>=0?"up":"dn"),"v "+(r.pct>=0?"up":"dn"),"v "+(r.cagr!=null&&r.cagr<0?"dn":"up")]}
+function drawSim(){var rows=[];tickers.forEach(function(t){var r=simCalc(t);if(r)rows.push(r)});
  rows.sort(function(x,y){return y.val-x.val});
- var h="<tr><th>Titre</th><th>Valeur finale</th><th>Gain</th><th>Rendement</th><th>Par an</th></tr>";
- rows.forEach(function(r){h+="<tr><td class=nm style='border-left:4px solid "+col(r.t)+"'>"+esc(r.t)+"<small>"+esc(r.short?"depuis le "+dstr(r.since,true)+" ("+r.yy.toFixed(1).replace(".",",")+" ans)":r.name)+"</small></td>"+
-  "<td class=v>"+fmoney(r.val)+"</td><td class='v "+(r.gain>=0?"up":"dn")+"'>"+(r.gain>0?"+":"")+fmoney(r.gain)+"</td><td class='v "+(r.pct>=0?"up":"dn")+"'>"+fmt(r.pct)+"</td><td class='v "+(r.cagr!=null&&r.cagr<0?"dn":"up")+"'>"+(r.cagr!=null?fmt(r.cagr):"—")+"</td></tr>"});
+ var h="<tr><th>Titre</th><th>Dividendes réinvestis</th><th>Valeur finale</th><th>Dividendes encaissés</th><th>Gain</th><th>Rendement</th><th>Par an</th></tr>";
+ rows.forEach(function(r){var c=cellsOf(r),k=clsOf(r),pv=rp[r.t]!=null?rp[r.t]:100;
+  h+="<tr data-t='"+esc(r.t)+"'><td class=nm style='border-left:4px solid "+col(r.t)+"'>"+esc(r.t)+"<small>"+esc(r.short?"depuis le "+dstr(r.since,true)+" ("+r.yy.toFixed(1).replace(".",",")+" ans)":r.name)+"</small></td>"+
+  "<td class=v><input type=number class=rp min=0 max=100 step=5 value='"+pv+"' "+(mode==="tr"?"":"disabled")+"> %</td>"+
+  c.map(function(x,i){return "<td class='out "+k[i]+"'>"+x+"</td>"}).join("")+"</tr>"});
  $("simtbl").innerHTML=rows.length?h:"";
- $("simnote").textContent=rows.length?"Simulation d’un investissement unique de "+fmoney(amt)+(yrs==="MAX"?" depuis le début de l’historique":" il y a "+yrs+(yrs==="1"?" an":" ans"))+", "+(mode==="tr"?"dividendes réinvestis":"sans les dividendes")+", sans frais ni impôts, dans la devise de chaque titre. Les performances passées ne garantissent pas les résultats futurs.":""}
+ [].forEach.call($("simtbl").querySelectorAll("input.rp"),function(inp){inp.oninput=function(){
+  var tr=inp.closest("tr"),t=tr.getAttribute("data-t"),v=+inp.value;if(inp.value===""||isNaN(v))return;
+  rp[t]=Math.min(Math.max(v,0),100);sync();var r=simCalc(t);if(!r)return;
+  var tds=tr.querySelectorAll("td.out"),c=cellsOf(r),k=clsOf(r);for(var i=0;i<tds.length;i++){tds[i].textContent=c[i];tds[i].className="out "+k[i]}}});
+ $("simnote").textContent=rows.length?"Simulation d’un investissement unique de "+fmoney(amt)+(yrs==="MAX"?" depuis le début de l’historique":" il y a "+yrs+(yrs==="1"?" an":" ans"))+". "+(mode==="tr"?"La part de dividende réinvestie rachète des parts le jour du détachement ; le reste est encaissé en espèces, sans intérêt. Les dividendes sont reconstitués à partir des cours ajustés de Yahoo. ":"Mode Prix : dividendes non inclus. ")+"Sans frais ni impôts, dans la devise de chaque titre. Les performances passées ne garantissent pas les résultats futurs.":""}
 $("amt").value=amt;$("yrs").value=yrs;
 $("amt").oninput=function(){var v=+$("amt").value;if(v>0){amt=v;sync();drawSim()}};
 $("yrs").onchange=function(){yrs=$("yrs").value;sync();drawSim()};
+$("rpbtn").onclick=function(){var v=+$("rpall").value;if($("rpall").value===""||isNaN(v))return;v=Math.min(Math.max(v,0),100);tickers.forEach(function(t){rp[t]=v});sync();drawSim()};
 var rt;window.addEventListener("resize",function(){clearTimeout(rt);rt=setTimeout(render,150)});
 drawTabs();
 var st;$("tin").addEventListener("input",function(){clearTimeout(st);var v=$("tin").value.trim();if(!API||v.length<2)return;
